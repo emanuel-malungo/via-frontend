@@ -7,13 +7,9 @@ import {
 } from "@/components";
 
 export default function Home() {
-  const handleStartQuiz = () => {
-    // Aqui você pode adicionar a lógica para navegar para o questionário
-    console.log("Iniciando questionário...");
-  };
-
   return (
     <PageLayout>
+
       <HeroSection
         logoSrc={icon}
         logoAlt="VIA Logo"
@@ -25,7 +21,7 @@ export default function Home() {
 
       <CTASection
         buttonText="Começar Questionário"
-        onButtonClick={handleStartQuiz}
+        href="/quiz"
       />
     </PageLayout>
   );

@@ -1,3 +1,5 @@
+"use client";
+
 import Image, { StaticImageData } from "next/image";
 import { GraduationCap, Sparkles } from "lucide-react";
 import { DecorativeIcon } from "@/components/ui/decorative/decorative-icon";

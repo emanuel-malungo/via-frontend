@@ -8,27 +8,9 @@ import { PageLayout } from "@/components/layout/page-layout";
 import { GradientTitle } from "@/components/ui/gradient-title";
 import { DecorativeIcon } from "@/components/ui/decorative/decorative-icon";
 import { ClipboardList, CheckCircle, ArrowRight, ArrowLeft } from "lucide-react";
+import { useVocationalAnalysis } from '@/hooks/useVocationalAnalysis';
+import { QuizAnswer, Question, Response } from '@/types/quiz.types';
 import { useRouter } from "next/navigation";
-
-interface Question {
-  id: number;
-  texto: string;
-}
-
-interface Response {
-  id: number;
-  pergunta_id: number;
-  texto: string;
-  area: string;
-  pontos: number;
-}
-
-interface Scores {
-  tecnologia: number;
-  saude: number;
-  negocios: number;
-  arte: number;
-}
 
 const questions: Question[] = [
   {
@@ -143,10 +125,12 @@ const responses: Response[] = [
 
 export default function Quiz() {
   const router = useRouter();
+  const { analyzeProfile, isLoading, analysis, error, calculateBasicResult } = useVocationalAnalysis();
   const [currentQuestion, setCurrentQuestion] = useState<number>(0);
   const [answers, setAnswers] = useState<Response[]>([]);
   const [selectedResponse, setSelectedResponse] = useState<number | null>(null);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
+  const [showBasicResult, setShowBasicResult] = useState<boolean>(false);
 
   const progress = ((currentQuestion + 1) / questions.length) * 100;
   const currentQuestionData = questions[currentQuestion];
@@ -158,11 +142,12 @@ export default function Quiz() {
     setSelectedResponse(response.id);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (selectedResponse) {
       const response = responses.find((r) => r.id === selectedResponse);
       if (response) {
-        setAnswers([...answers, response]);
+        const newAnswers = [...answers, response];
+        setAnswers(newAnswers);
       }
 
       if (currentQuestion < questions.length - 1) {
@@ -170,6 +155,21 @@ export default function Quiz() {
         setSelectedResponse(null);
       } else {
         setIsCompleted(true);
+        
+        // Iniciar análise inteligente
+        const quizAnswers: QuizAnswer[] = [...answers, response!].map((answer, index) => ({
+          pergunta: questions.find(q => q.id === answer.pergunta_id)?.texto || `Pergunta ${index + 1}`,
+          resposta: answer.texto,
+          area: answer.area,
+          pontos: answer.pontos
+        }));
+
+        try {
+          await analyzeProfile(quizAnswers);
+        } catch (error) {
+          console.error('Erro na análise:', error);
+          setShowBasicResult(true);
+        }
       }
     }
   };
@@ -182,84 +182,190 @@ export default function Quiz() {
     }
   };
 
-  const calculateResults = (): string => {
-    const scores: Scores = {
-      tecnologia: 0,
-      saude: 0,
-      negocios: 0,
-      arte: 0,
-    };
-
-    answers.forEach((answer) => {
-      scores[answer.area as keyof Scores] += answer.pontos;
-    });
-
-    const maxScore = Math.max(...Object.values(scores));
-    const topArea = Object.keys(scores).find(
-      (area) => scores[area as keyof Scores] === maxScore
-    ) as keyof Scores;
-
-    const areaNames = {
-      tecnologia: "Tecnologia e Inovação",
-      saude: "Saúde e Bem-estar",
-      negocios: "Negócios e Gestão",
-      arte: "Arte e Design",
-    };
-
-    return areaNames[topArea];
-  };
-
   const handleRestart = () => {
     setCurrentQuestion(0);
     setAnswers([]);
     setSelectedResponse(null);
     setIsCompleted(false);
+    setShowBasicResult(false);
   };
 
   if (isCompleted) {
-    const result = calculateResults();
+    // Mostrar loading enquanto a análise está sendo processada
+    if (isLoading) {
+      return (
+        <PageLayout>
+          <div className="space-y-8">
+            <DecorativeIcon 
+              icon={ClipboardList} 
+              decorationIcon={CheckCircle}
+              size="lg"
+            />
 
-    return (
-      <PageLayout>
-        <div className="space-y-8">
-          <DecorativeIcon 
-            icon={CheckCircle} 
-            decorationIcon={ClipboardList}
-            size="lg"
-          />
+            <div className="space-y-4">
+              <GradientTitle size="lg">
+                Analisando seu Perfil...
+              </GradientTitle>
 
-          <div className="space-y-4">
-            <GradientTitle size="lg">
-              Questionário Concluído!
-            </GradientTitle>
-
-            <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-lg mx-auto">
-              Com base nas suas respostas, a área mais indicada para você é:
-            </p>
-          </div>
-
-          <Card className="max-w-md mx-auto">
-            <CardContent className="text-center py-8">
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent mb-4">
-                {result}
-              </h2>
-              <p className="text-muted-foreground">
-                Esta área se alinha com suas preferências e interesses.
+              <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-lg mx-auto">
+                Nossa IA está processando suas respostas para gerar uma análise personalizada.
               </p>
-            </CardContent>
-          </Card>
+            </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button onClick={handleRestart} variant="outline" size="lg">
-              Refazer Questionário
-            </Button>
-            <Button onClick={() => router.push("/")} size="lg">
-              Voltar ao Início
-            </Button>
+            <div className="flex justify-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
           </div>
-        </div>
-      </PageLayout>
-    );
+        </PageLayout>
+      );
+    }
+
+    // Mostrar resultado da análise inteligente ou erro
+    if (analysis || error || showBasicResult) {
+      const basicResult = showBasicResult || error ? (() => {
+        const quizAnswers: QuizAnswer[] = answers.map((answer, index) => ({
+          pergunta: questions.find(q => q.id === answer.pergunta_id)?.texto || `Pergunta ${index + 1}`,
+          resposta: answer.texto,
+          area: answer.area,
+          pontos: answer.pontos
+        }));
+        return calculateBasicResult(quizAnswers);
+      })() : null;
+
+      return (
+        <PageLayout>
+          <div className="space-y-8">
+            <DecorativeIcon 
+              icon={CheckCircle} 
+              decorationIcon={ClipboardList}
+              size="lg"
+            />
+
+            <div className="space-y-4">
+              <GradientTitle size="lg">
+                Sua Análise Vocacional
+              </GradientTitle>
+
+              <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-lg mx-auto">
+                {analysis ? 
+                  "Baseado em suas respostas, nossa IA gerou uma análise personalizada para você:" :
+                  "Com base nas suas respostas, aqui está sua análise vocacional:"
+                }
+              </p>
+            </div>
+
+            {/* Resultado principal */}
+            <Card className="max-w-4xl mx-auto">
+              <CardHeader>
+                <CardTitle className="text-2xl text-center bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                  {analysis?.area_principal || basicResult?.areaName}
+                </CardTitle>
+                {analysis?.compatibilidade && (
+                  <p className="text-center text-muted-foreground">
+                    {analysis.compatibilidade}% de compatibilidade
+                  </p>
+                )}
+              </CardHeader>
+              
+              <CardContent className="space-y-6">
+                {/* Pontos Fortes */}
+                {analysis?.pontos_fortes && (
+                  <div>
+                    <h3 className="font-semibold text-lg mb-3 text-primary">🌟 Seus Pontos Fortes</h3>
+                    <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {analysis.pontos_fortes.map((ponto, index) => (
+                        <li key={index} className="flex items-start gap-2">
+                          <span className="text-green-500 mt-1">•</span>
+                          <span className="text-sm">{ponto}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Cursos Recomendados */}
+                {analysis?.cursos_recomendados && (
+                  <div>
+                    <h3 className="font-semibold text-lg mb-3 text-primary">🎓 Cursos Recomendados</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {analysis.cursos_recomendados.map((curso, index) => (
+                        <div key={index} className="bg-muted/50 p-3 rounded-lg">
+                          <span className="text-sm">{curso}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Perspectivas de Carreira */}
+                {analysis?.perspectivas_carreira && (
+                  <div>
+                    <h3 className="font-semibold text-lg mb-3 text-primary">💼 Perspectivas de Carreira</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {analysis.perspectivas_carreira}
+                    </p>
+                  </div>
+                )}
+
+                {/* Dicas de Desenvolvimento */}
+                {analysis?.dicas_desenvolvimento && (
+                  <div>
+                    <h3 className="font-semibold text-lg mb-3 text-primary">💡 Dicas para Desenvolvimento</h3>
+                    <ul className="space-y-2">
+                      {analysis.dicas_desenvolvimento.map((dica, index) => (
+                        <li key={index} className="flex items-start gap-2">
+                          <span className="text-blue-500 mt-1">•</span>
+                          <span className="text-sm">{dica}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Áreas de Desenvolvimento */}
+                {analysis?.areas_desenvolvimento && (
+                  <div>
+                    <h3 className="font-semibold text-lg mb-3 text-primary">🚀 Áreas para Desenvolver</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {analysis.areas_desenvolvimento.map((area, index) => (
+                        <span key={index} className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm">
+                          {area}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Resultado básico em caso de erro */}
+                {(error || showBasicResult) && basicResult && (
+                  <div className="text-center">
+                    <p className="text-muted-foreground mb-4">
+                      Esta área se alinha com suas preferências e interesses.
+                    </p>
+                    {error && (
+                      <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
+                        A análise detalhada não está disponível no momento, mas aqui está seu resultado baseado nas respostas.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button onClick={handleRestart} variant="outline" size="lg">
+                Refazer Questionário
+              </Button>
+              <Button onClick={() => router.push("/")} size="lg">
+                Voltar ao Início
+              </Button>
+            </div>
+          </div>
+        </PageLayout>
+      );
+    }
+
+    return null;
   }
 
   return (

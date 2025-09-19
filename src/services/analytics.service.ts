@@ -1,6 +1,15 @@
 import api from "@/utils/api";
 
-const KEY = "AIzaSyDkpDmHTz2_9fhB3NvBFW0BnIiaNCu4RbY";
+// Pega a API key das variáveis de ambiente
+const KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
+// Validação da API key
+if (!KEY) {
+  throw new Error(
+    "NEXT_PUBLIC_GEMINI_API_KEY não está definida. " +
+    "Verifique se você criou o arquivo .env.local com a chave da API do Gemini."
+  );
+}
 
 // Tipos para a aplicação VIA - Orientação Vocacional
 export interface QuizResult {
